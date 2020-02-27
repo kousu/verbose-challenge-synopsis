@@ -36,10 +36,10 @@ type ApiError struct {
 	Message    string `json:"message"`
 }
 
-var verboseLog *log.Logger
-var (
-	api, hostname, authToken string
-)
+var verboseLog *log.Logger = log.New(ioutil.Discard, log.Prefix(), log.Flags())
+var api = "http://fleet.intra.touchtones.example.com:6565"
+var hostname = "<unknown>"
+var authToken = "<required>"
 
 // TODO: for unit testing main(), you can use
 // os.Args = []string{"something", "something"}
@@ -187,7 +187,9 @@ func main() {
 			} else {
 				target = ioutil.Discard
 			}
-			verboseLog = log.New(target, log.Prefix(), log.Flags())
+			verboseLog.SetOutput(target)
+			verboseLog.SetPrefix(log.Prefix())
+			verboseLog.SetFlags(log.Flags())
 		}
 
 		// Prepare batch input file
@@ -207,9 +209,10 @@ func main() {
 	// Load environment parameters
 	var set bool
 	var err error
-	api, set = os.LookupEnv("TOUCHTUNES_FLEET_API")
-	if !set {
-		api = "http://fleet.intra.touchtones.example.com:6565"
+	var val string
+	val, set = os.LookupEnv("TOUCHTUNES_FLEET_API")
+	if set {
+		api = val
 	}
 
 	hostname, err = os.Hostname()
@@ -217,10 +220,11 @@ func main() {
 		log.Fatalf(err.Error())
 	}
 
-	authToken, set = os.LookupEnv("TOUCHTUNES_AUTH_TOKEN")
-	if !set {
+	val, set = os.LookupEnv("TOUCHTUNES_AUTH_TOKEN")
+	if set {
+		authToken = val
+	} else {
 		log.Println("Warning: TOUCHTUNES_AUTH_TOKEN should be defined.")
-		authToken = "<required>"
 	}
 
 	batchUpdate(input, apps)
