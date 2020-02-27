@@ -17,12 +17,6 @@ import (
 	"sync"
 )
 
-// Things to test:
-// - the empty app set
-// - apps with bad specs
-// - missing device_csv parameter
-// - badly formatted csv
-
 func TestUpdate200(t *testing.T) {
 	loaded := false
 
@@ -239,6 +233,8 @@ func TestUpdate500(t *testing.T) {
 }
 
 func TestUpdateNoApps(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	passed := false
 
 	var s http.ServeMux
@@ -306,6 +302,71 @@ func TestUpdateMultipleDevices(t *testing.T) {
 	expected := []string{"/profiles/clientId:12:34:56:78:9a:bc", "/profiles/clientId:aa:bb:cc:dd:ee:ff", "/profiles/clientId:ee:ee:ee:ee:ee:ee"}
 	if !reflect.DeepEqual(expected, loaded) {
 		t.Errorf("Expected to see %v but actually %v were loaded", expected, loaded)
+	}
+}
+
+func TestUpdateMultipleDevicesMalformed1(t *testing.T) {
+
+	log.SetOutput(ioutil.Discard)
+
+	var lock sync.Mutex
+	var loaded []string = nil
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		loaded = append(loaded, r.URL.String())
+		lock.Unlock()
+
+		w.Header().Add("Content-Type", "application/json")
+		w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	api = srv.URL
+
+	err := batchUpdate(bytes.NewBufferString(
+		`mac_addresses
+aa:bb:cc:dd:ee:ff
+192.168.0.1
+12:34:56:78:9a:bc
+`), map[string]string{})
+	if err != nil {
+		t.Error(err)
+	}
+
+	sort.Strings(loaded)
+	expected := []string{"/profiles/clientId:12:34:56:78:9a:bc", "/profiles/clientId:aa:bb:cc:dd:ee:ff"}
+	if !reflect.DeepEqual(expected, loaded) {
+		t.Errorf("Expected to see %v but actually %v were loaded", expected, loaded)
+	}
+}
+
+func TestUpdateMultipleDevicesMalformed2(t *testing.T) {
+
+	log.SetOutput(ioutil.Discard)
+
+	var lock sync.Mutex
+	var loaded []string = nil
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		loaded = append(loaded, r.URL.String())
+		lock.Unlock()
+
+		w.Header().Add("Content-Type", "application/json")
+		w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	api = srv.URL
+
+	err := batchUpdate(bytes.NewBufferString(`size,ip_addresses
+9,10.0.0.1
+3,10.0.0.2
+9,10.0.0.3
+`), map[string]string{})
+	if err == nil {
+		t.Errorf("Expected an error but got none")
+	} else if !strings.Contains(err.Error(), "Batch input missing 'mac_addresses' column") {
+		t.Errorf("Expected 'Batch input missing 'mac_addresses' column' but received: %s", err.Error())
 	}
 }
 
