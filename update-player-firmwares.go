@@ -148,48 +148,46 @@ func batchUpdate(deviceList io.Reader, apps map[string]string) error {
 func parseCommand() (input *os.File, apps map[string]string, err error) {
 	apps = make(map[string]string)
 
-	{
-		// scope to limit the reach of the temporary argument parsing variables
+	flags := flag.NewFlagSet("", flag.ContinueOnError)
 
-		// Define and parse command line
-		flag.Usage = func() {
-			fmt.Fprintf(os.Stderr, "Usage: %s [options] [application_id=vM.m.p ...] device_csv\n", filepath.Base(os.Args[0]))
-			fmt.Fprintf(os.Stderr, "Options:\n")
-			flag.PrintDefaults()
-		}
-		verboseFlag := flag.Bool("v", false, "verbose mode")
-		flag.Parse()
-		rest := flag.Args()
-		if len(rest) < 1 {
-			return nil, nil, fmt.Errorf("Missing 'device_csv' argument.")
-		}
-		inputFname := rest[len(rest)-1]
-		rest = rest[:len(rest)-1]
+	// Define and parse command line
+	flags.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] [application_id=vM.m.p ...] device_csv\n", filepath.Base(os.Args[0]))
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		flag.PrintDefaults()
+	}
+	verboseFlag := flags.Bool("v", false, "verbose mode")
+	flags.Parse(os.Args[1:])
+	rest := flags.Args()
+	if len(rest) < 1 {
+		return nil, nil, fmt.Errorf("Missing 'device_csv' argument.")
+	}
+	inputFname := rest[len(rest)-1]
+	rest = rest[:len(rest)-1]
 
-		// record target application versions to install
-		re := regexp.MustCompile(`(?P<application_id>\w+)=(?P<version>v\d+\.\d+\.\d+)`)
-		for _, app := range rest {
-			pieces := re.FindStringSubmatch(app)
-			if pieces == nil {
-				return nil, nil, fmt.Errorf("Invalid app version specification '%v'", app)
-			}
-			apps[pieces[1]] = pieces[2]
+	// record target application versions to install
+	re := regexp.MustCompile(`(?P<application_id>\w+)=(?P<version>v\d+\.\d+\.\d+)`)
+	for _, app := range rest {
+		pieces := re.FindStringSubmatch(app)
+		if pieces == nil {
+			return nil, nil, fmt.Errorf("Invalid app version specification '%v'", app)
 		}
+		apps[pieces[1]] = pieces[2]
+	}
 
-		// Configure logging
-		if *verboseFlag {
-			verboseLog.SetOutput(os.Stderr)
-		}
+	// Configure logging
+	if *verboseFlag {
+		verboseLog.SetOutput(os.Stderr)
+	}
 
-		// Prepare batch input file
-		if inputFname == "-" {
-			input = os.Stdin
-		} else {
-			var err error
-			input, err = os.Open(inputFname)
-			if err != nil {
-				return nil, nil, err
-			}
+	// Prepare batch input file
+	if inputFname == "-" {
+		input = os.Stdin
+	} else {
+		var err error
+		input, err = os.Open(inputFname)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
