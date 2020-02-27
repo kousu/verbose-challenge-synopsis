@@ -60,7 +60,7 @@ func update(clientId string, updateJSON []byte) error {
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode == http.StatusOK {
+	if resp.StatusCode == http.StatusOK && resp.Header.Get("Content-Type") == "application/json" {
 		return nil
 	} else {
 		if resp.Header.Get("Content-Type") == "application/json" {
@@ -73,7 +73,7 @@ func update(clientId string, updateJSON []byte) error {
 			}
 		} else {
 			// Nonsense result; maybe we're not talking to the right API?
-			return fmt.Errorf("%s %s: %v", req.Method, url, resp.Status)
+			return fmt.Errorf("%s %s: Unexpected API result: %v", req.Method, url, resp)
 		}
 	}
 }
