@@ -1,174 +1,94 @@
-# Player Developer tech assignment
+# TouchTunes Batch Device Updater
 
-## Problem description
+There are thousands of TouchTunes players deployed as consumer-premises equipment.
+Their software consists of apps which run and can be updated semi-independently.
+This tool batch updates the software on these devices.
 
-Imagine you want to update the software of thousands of music players that are already in the field. A music player is composed of multiple components, each having its own version.
+## Usage
 
-We know that every 15 minutes, each player queries an API to see if a new version is available and then updates itself.
-
-## The assignment
-
-You need to create a production-ready tool that will automate the update of a thousand music players by using an API. You don't have to create the API.
-
-Your tool will be used by different people using different operating systems. The most common ones will be Windows, MacOS and Linux.
-
-The input is a .csv file containing, at the very minimum, MAC addresses of players to update, always in the first column.
-
-### Example of a .csv file:
-```
-mac_addresses, id1, id2, id3
-a1:bb:cc:dd:ee:ff, 1, 2, 3
-a2:bb:cc:dd:ee:ff, 1, 2, 3
-a3:bb:cc:dd:ee:ff, 1, 2, 3
-a4:bb:cc:dd:ee:ff, 1, 2, 3
-```
-
-The `id1`, `id2` and `id3` fields aren't used in this assignment. The example is shown simply to demonstrate what the .csv file should look like.
-
-### The API to use to update the software version
+### Synopsis
 
 ```
-PUT /profiles/clientId:{macaddress}
+update-player-firmwares [-h] [-v] [application_id=vM.m.p ...] device_csv
 ```
 
-You will need to provide a client id and an authentication token in the headers. For the purpose of this test, these values can be anything but keep in mind that the token will expire in real life.
+To run updates, first collect the apps to update and their desired new versions.
+The versions should be in [semver](https://semver.org/) format: `vMAJOR.MINOR.PATCH`. You can find the list of available apps with their tagged versions on the [project server](https://gitlab.intra.touchtunes.com).
 
-#### Request
+Second, collect the devices to target. Provide them in a CSV file by MAC address, say "devices.csv":
 
-```
-Headers
-
-Content-Type: application/json
-x-client-id: required
-x-authentication-token: required
-
-Body
-
-{
-  "profile": {    
-    "applications": [
-      {
-        "applicationId": "music_app"
-        "version": "v1.4.10"
-      },
-      {
-        "applicationId": "diagnostic_app",
-        "version": "v1.2.6"
-      },
-      {
-        "applicationId": "settings_app",
-        "version": "v1.1.5"
-      }
-    ]
-  }
-}
+```{csv}
+mac_addresses
+8c:50:ff:70:f5:94
+9c:76:8c:19:57:bf
+40:67:56:ed:e7:dc
 ```
 
-#### Reponses
+You will also need to have an authentication token from the
+[intranet OAuth server](https://intra.touchtunes.example.com/authorize/updates).
+Provide it via an environment variable:
 
-##### 200
-```
-Headers
-
-Content-Type: application/json
-
-Body
-
-{
-  "profile": {    
-    "applications": [
-      {
-        "applicationId": "music_app"
-        "version": "v1.4.10"
-      },
-      {
-        "applicationId": "diagnostic_app",
-        "version": "v1.2.6"
-      },
-      {
-        "applicationId": "settings_app",
-        "version": "v1.1.5"
-      }
-    ]
-  }
-}
+```{sh}
+export TOUCHTUNES_AUTH_TOKEN="<your-token>"
 ```
 
-##### 401
+Run the batch job like this
 
-```
-Headers
-
-Content-Type: application/json
-
-Body
-
-{
-  "statusCode": 401,
-  "error": "Unauthorized",
-  "message": "invalid clientId or token supplied"
-}
+```{sh}
+update-player-firmwares music_app=v1.4.10 diagnostic_app=v1.2.6 settings_app=v1.1.5 devices.csv
 ```
 
-##### 404
+You may use "-" instead of the filename to read from stdin instead:
 
-```
-Headers
-
-Content-Type: application/json
-
-Body
-
-{
-  "statusCode": 404,
-  "error": "Not Found",
-  "message": "profile of client 823f3161ae4f4495bf0a90c00a7dfbff does not exist"
-}
+```{sh}
+update-player-firmwares music_app=v1.4.10 diagnostic_app=v1.2.6 settings_app=v1.1.5 - <<EOF
+mac_addresses
+8c:50:ff:70:f5:94
+9c:76:8c:19:57:bf
+40:67:56:ed:e7:dc
+EOF
 ```
 
-##### 409
+Options:
 
-```
-Headers
+* `-h`: show short usage
+* `-v`: be more verbose about the operations in progress
 
-Content-Type: application/json
+Environment variables:
 
-Body
+* `TOUCHTUNES_FLEET_API`: the RESTful endpoint that manages
+       the TouchTunes fleet; optional, only to override the default.
+* `TOUCHTUNES_AUTH_TOKEN`: the token authorizing usage of
+       the fleet API; required.
 
-{
-  "statusCode": 409,
-  "error": "Conflict",
-  "message": "child \"profile\" fails because [child \"applications\" fails because [\"applications\" is required]]"
-}
-```
+## Installation
 
-##### 500
+To install from source, first get [go 1.12+](https://golang.org/) installed (e.g. `brew install go`, `apt-get install go`),
+making sure `GOBIN` is defined, and that `$GOBIN` is part of your system `PATH`. Then
 
-```
-Headers
-
-Content-Type: application/json
-
-Body
-
-{
-  "statusCode": 500,
-  "error": "Internal Server Error",
-  "message": "An internal server error occurred"
-}
+```{sh}
+go install
 ```
 
-## What we mean by production-ready:
+will produce `update-player-firmwares`.
 
-- developer documentation (how to build, how to run tests)
-- user documentation (how to use the tool, it can be "embedded" in the tool itself or in a document)
-- unit tests
+## Development
 
-## Important notes
+To run and test the app without installation, use `go run`. It is also wise to point the app at a staging API during development. Hence,
 
-- you can use the language/technology of your choice
-- explain your assumptions and technical decisions in a document (plain text or markdown, nothing fancy)
+```
+export TOUCHTUNES_FLEET_API=http://localhost:6565
+go run update-player-firmwares.go [options] [apps ...] device_csv
+```
 
-## Submission
+Please remember to run `gofmt -w` regularly over your code.
 
-Submit your assignment using a public GitHub / GitLab / Bitbucket repository (don't use our company name in the repo name or description) or a zip archive.
+### Tests
+
+To run unit tests, just
+
+```{sh}
+go test -v
+```
+
+The tests are in ...
