@@ -3,14 +3,18 @@ package main
 import (
 	"testing"
 
+	"bytes"
+	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
-	//"log"
-	//"fmt"
+	"sync"
 )
 
 // Things to test:
@@ -231,6 +235,77 @@ func TestUpdate500(t *testing.T) {
 
 	if !loaded {
 		t.Errorf("Expected URL was not accessed correctly")
+	}
+}
+
+func TestUpdateNoApps(t *testing.T) {
+	passed := false
+
+	var s http.ServeMux
+	s.HandleFunc("/profiles/clientId:aa:bb:cc:dd:ee:ff", func(w http.ResponseWriter, r *http.Request) {
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			fmt.Println(err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		expected := []byte(`{
+  "profile": {
+    "applications": null
+  }
+}`)
+		if bytes.Compare(expected, data) != 0 {
+			err := fmt.Errorf("Expected %s, recieved %s", expected, data)
+			t.Error(err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		} else {
+			w.Header().Add("Content-Type", "application/json")
+			w.Write([]byte("{}"))
+			passed = true
+		}
+	})
+	srv := httptest.NewServer(&s)
+	defer srv.Close()
+
+	api = srv.URL
+
+	err := batchUpdate(bytes.NewBufferString("mac_addresses\naa:bb:cc:dd:ee:ff"), map[string]string{})
+	if err != nil {
+		t.Error(err)
+	}
+	if !passed {
+		t.Errorf("Did not pass")
+	}
+}
+
+func TestUpdateMultipleDevices(t *testing.T) {
+
+	log.SetOutput(ioutil.Discard)
+
+	var lock sync.Mutex
+	var loaded []string = nil
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		loaded = append(loaded, r.URL.String())
+		lock.Unlock()
+
+		w.Header().Add("Content-Type", "application/json")
+		w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	api = srv.URL
+
+	err := batchUpdate(bytes.NewBufferString("mac_addresses\naa:bb:cc:dd:ee:ff\nee:ee:ee:ee:ee:ee\n12:34:56:78:9a:bc"), map[string]string{})
+	if err != nil {
+		t.Error(err)
+	}
+
+	sort.Strings(loaded)
+	expected := []string{"/profiles/clientId:12:34:56:78:9a:bc", "/profiles/clientId:aa:bb:cc:dd:ee:ff", "/profiles/clientId:ee:ee:ee:ee:ee:ee"}
+	if !reflect.DeepEqual(expected, loaded) {
+		t.Errorf("Expected to see %v but actually %v were loaded", expected, loaded)
 	}
 }
 
