@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 
 	"encoding/csv"
 	"encoding/json"
+	"net/http"
 )
 
 type ApplicationUpdateSpec struct {
@@ -153,7 +155,25 @@ func main() {
 			continue // ignore, don't break, the batch job on invalid lines
 		}
 
-		verboseLog.Printf("Updating client '%s'\n", clientId)
+		url := api + "/profiles/clientId:" + clientId
+		verboseLog.Printf("Updating '%s'\n", url)
+
+		req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(update))
+		if err != nil {
+			log.Println("Couldn't make request:", err.Error())
+			continue
+		}
+		// TODO: extra headers
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			log.Println("Couldn't send request:", err.Error())
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			log.Println(resp.Status)
+			io.Copy(log.Writer(), resp.Body)
+			continue
+		}
 	}
 
 	api = api
