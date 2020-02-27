@@ -6,9 +6,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"reflect"
 	"strings"
-	//"os"
 	//"log"
+	//"fmt"
 )
 
 // Things to test:
@@ -230,5 +232,61 @@ func TestUpdate500(t *testing.T) {
 	if !loaded {
 		t.Errorf("Expected URL was not accessed correctly")
 	}
+}
 
+func TestUpdateParseNoApps(t *testing.T) {
+	os.Args = append(os.Args[:1], "-")
+	csv, apps, err := parseCommand()
+	if err != nil {
+		t.Fatalf("Error should not have happened: %v", err)
+	}
+
+	if csv != os.Stdin {
+		t.Errorf("Input file should be stdin")
+	}
+
+	expectedApps := map[string]string{}
+	if !reflect.DeepEqual(expectedApps, apps) {
+		t.Errorf("App specification was mis-parsed. Expected %v, got %v", expectedApps, apps)
+	}
+}
+
+func TestUpdateAppParsing(t *testing.T) {
+	os.Args = append(os.Args[:1], "app1=v3.4.0", "app2=v5.4.3", "-")
+	csv, apps, err := parseCommand()
+	if err != nil {
+		t.Fatalf("Error should not have happened: %v", err)
+	}
+
+	if csv != os.Stdin {
+		t.Errorf("Input file should be stdin")
+	}
+
+	expectedApps := map[string]string{
+		"app2": "v5.4.3",
+		"app1": "v3.4.0",
+	}
+	if !reflect.DeepEqual(expectedApps, apps) {
+		t.Errorf("App specification was mis-parsed. Expected %v, got %v", expectedApps, apps)
+	}
+}
+
+func TestUpdateAppParsingMalformed(t *testing.T) {
+	os.Args = append(os.Args[:1], "app1=v3.4.0", "-", "app2=v5.4.3")
+	_, _, err := parseCommand()
+	if err == nil {
+		t.Fatalf("Error should have happened")
+	} else if !strings.Contains(err.Error(), "Invalid app version specification") {
+		t.Fatalf("Unexpected error: %v", err.Error())
+	}
+}
+
+func TestUpdateMalformedArgs(t *testing.T) {
+	os.Args = append(os.Args[:1])
+	_, _, err := parseCommand()
+	if err == nil {
+		t.Fatalf("Error should have happened")
+	} else if !strings.Contains(err.Error(), "Missing 'device_csv' argument.") {
+		t.Fatalf("Unexpected error: %v", err.Error())
+	}
 }
