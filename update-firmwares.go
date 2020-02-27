@@ -12,7 +12,21 @@ import (
 	"regexp"
 
 	"encoding/csv"
+	"encoding/json"
 )
+
+type ApplicationUpdateSpec struct {
+	ApplicationId string `json:"applicationId"`
+	Version       string `json:"version"`
+}
+
+type ApplicationUpdateProfile struct {
+	Applications []ApplicationUpdateSpec `json:"applications"`
+}
+
+type ApplicationUpdate struct {
+	Profile ApplicationUpdateProfile `json:"profile"`
+}
 
 var verboseLog *log.Logger
 
@@ -83,6 +97,26 @@ func main() {
 	}
 
 	verboseLog.Println("TouchTunes Fleet Updater Starting Up")
+
+	// Pre-compute the update-request JSON
+	var appSpec []ApplicationUpdateSpec
+	for app, version := range apps {
+		appSpec = append(appSpec, ApplicationUpdateSpec{app, version})
+	}
+	verboseLog.Println(appSpec)
+
+	update, err := json.MarshalIndent(
+		ApplicationUpdate{
+			Profile: ApplicationUpdateProfile{
+				Applications: appSpec,
+			},
+		},
+		"",
+		"  ")
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	verboseLog.Printf("Updating players with:\n%s\n", string(update))
 
 	// TODO: add a worker pool here so that updates can happen in parallel.
 
