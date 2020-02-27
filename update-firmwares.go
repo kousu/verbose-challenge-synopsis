@@ -10,6 +10,8 @@ import (
 
 	"path/filepath"
 	"regexp"
+
+	"encoding/csv"
 )
 
 var verboseLog *log.Logger
@@ -80,7 +82,47 @@ func main() {
 		}
 	}
 
-	api = api
-	input = input
 	verboseLog.Println("TouchTunes Fleet Updater Starting Up")
+
+	// TODO: add a worker pool here so that updates can happen in parallel.
+
+	devices := csv.NewReader(input)
+
+	header, err := devices.Read()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	headerM := make(map[string]int)
+	for i, h := range header {
+		headerM[h] = i
+	} // go doesn't have an indexOf() method; this is the second-best way
+	macAddresses_i, exists := headerM["mac_addresses"]
+	if !exists {
+		log.Fatalf("Batch input missing 'mac_addresses' column")
+	}
+	r := 0
+	for {
+		r += 1
+		record, err := devices.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+
+		clientId := record[macAddresses_i]
+
+		macAddresses := regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})$`)
+		if !macAddresses.MatchString(clientId) {
+			log.Printf("Warning: invalid MAC address '%s' on line %d.\n", clientId, r)
+			continue // ignore, don't break, the batch job on invalid lines
+		}
+
+		verboseLog.Printf("Updating client '%s'\n", clientId)
+	}
+
+	api = api
+
+	verboseLog.Println("TouchTunes Fleet Updater Finished")
 }
