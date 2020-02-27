@@ -78,7 +78,7 @@ func update(clientId string, updateJSON []byte) error {
 	}
 }
 
-func batchUpdate(deviceList io.Reader, apps map[string]string) {
+func batchUpdate(deviceList io.Reader, apps map[string]string) error {
 	// Pre-compute the update-request JSON
 	var appSpec []ApplicationUpdateSpec
 	for app, version := range apps {
@@ -94,7 +94,7 @@ func batchUpdate(deviceList io.Reader, apps map[string]string) {
 		"",
 		"  ")
 	if err != nil {
-		log.Fatalf(err.Error())
+		return err
 	}
 	verboseLog.Printf("Updating players with:\n%s\n", string(updateJSON))
 
@@ -104,7 +104,7 @@ func batchUpdate(deviceList io.Reader, apps map[string]string) {
 
 	header, err := devices.Read()
 	if err != nil {
-		log.Fatalf(err.Error())
+		return err
 	}
 	headerM := make(map[string]int)
 	for i, h := range header {
@@ -112,7 +112,7 @@ func batchUpdate(deviceList io.Reader, apps map[string]string) {
 	} // go doesn't have an indexOf() method; this is the second-best way
 	macAddresses_i, exists := headerM["mac_addresses"]
 	if !exists {
-		log.Fatalf("Batch input missing 'mac_addresses' column")
+		return fmt.Errorf("Batch input missing 'mac_addresses' column")
 	}
 	r := 0
 	for {
@@ -122,7 +122,7 @@ func batchUpdate(deviceList io.Reader, apps map[string]string) {
 			break
 		}
 		if err != nil {
-			log.Fatalf(err.Error())
+			return err
 		}
 
 		clientId := record[macAddresses_i]
@@ -142,14 +142,11 @@ func batchUpdate(deviceList io.Reader, apps map[string]string) {
 		log.Printf("%s updated.\n", clientId)
 	}
 
-	verboseLog.Println("TouchTunes Fleet Updater Finished")
+	return nil
 }
 
-func main() {
-	log.SetFlags(0) // disable timestamps ; XXX don't do this?
-
-	apps := make(map[string]string)
-	var input *os.File
+func parseCommand() (input *os.File, apps map[string]string, err error) {
+	apps = make(map[string]string)
 
 	{
 		// scope to limit the reach of the temporary argument parsing variables
@@ -164,7 +161,7 @@ func main() {
 		flag.Parse()
 		rest := flag.Args()
 		if len(rest) < 1 {
-			log.Fatalf("Missing 'device_csv' argument.")
+			return nil, nil, fmt.Errorf("Missing 'device_csv' argument.")
 		}
 		inputFname := rest[len(rest)-1]
 		rest = rest[:len(rest)-1]
@@ -174,7 +171,7 @@ func main() {
 		for _, app := range rest {
 			pieces := re.FindStringSubmatch(app)
 			if pieces == nil {
-				log.Fatalf("Invalid app version specification '%v'", app)
+				return nil, nil, fmt.Errorf("Invalid app version specification '%v'", app)
 			}
 			apps[pieces[1]] = pieces[2]
 		}
@@ -191,16 +188,26 @@ func main() {
 			var err error
 			input, err = os.Open(inputFname)
 			if err != nil {
-				log.Fatalf(err.Error())
+				return nil, nil, err
 			}
 		}
+	}
+
+	return
+}
+
+func main() {
+	log.SetFlags(0) // disable timestamps ; XXX don't do this?
+
+	input, apps, err := parseCommand()
+	if err != nil {
+		log.Fatalf(err.Error())
 	}
 
 	verboseLog.Println("TouchTunes Fleet Updater Starting Up")
 
 	// Load environment parameters
 	var set bool
-	var err error
 	var val string
 	val, set = os.LookupEnv("TOUCHTUNES_FLEET_API")
 	if set {
@@ -219,5 +226,10 @@ func main() {
 		log.Println("Warning: TOUCHTUNES_AUTH_TOKEN should be defined.")
 	}
 
-	batchUpdate(input, apps)
+	err = batchUpdate(input, apps)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	verboseLog.Println("TouchTunes Fleet Updater Finished")
 }
