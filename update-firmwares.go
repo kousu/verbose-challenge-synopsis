@@ -3,12 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
 
 	"path/filepath"
 	"regexp"
 )
+
+var verboseLog *log.Logger
 
 // TODO: for unit testing main(), you can use
 // os.Args = []string{"something", "something"}
@@ -51,10 +55,23 @@ func main() {
 			apps[pieces[1]] = pieces[2]
 		}
 
-		verboseFlag = verboseFlag
+		// Configure logging
+		{
+			log.SetFlags(0) // disable timestamps ; XXX don't do this?
+
+			var target io.Writer
+			if *verboseFlag {
+				target = os.Stderr
+			} else {
+				target = ioutil.Discard
+			}
+			verboseLog = log.New(target, log.Prefix(), log.Flags())
+		}
+
 		inputFname = inputFname
 	}
 
 	api = api
 	input = input
+	verboseLog.Println("TouchTunes Fleet Updater Starting Up")
 }
