@@ -68,7 +68,16 @@ func main() {
 			verboseLog = log.New(target, log.Prefix(), log.Flags())
 		}
 
-		inputFname = inputFname
+		// Prepare batch input file
+		if inputFname == "-" {
+			input = os.Stdin
+		} else {
+			var err error
+			input, err = os.Open(inputFname)
+			if err != nil {
+				log.Fatalf(err.Error())
+			}
+		}
 	}
 
 	api = api
