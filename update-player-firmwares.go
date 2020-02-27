@@ -180,16 +180,8 @@ func main() {
 		}
 
 		// Configure logging
-		{
-			var target io.Writer
-			if *verboseFlag {
-				target = os.Stderr
-			} else {
-				target = ioutil.Discard
-			}
-			verboseLog.SetOutput(target)
-			verboseLog.SetPrefix(log.Prefix())
-			verboseLog.SetFlags(log.Flags())
+		if *verboseFlag {
+			verboseLog.SetOutput(os.Stderr)
 		}
 
 		// Prepare batch input file
