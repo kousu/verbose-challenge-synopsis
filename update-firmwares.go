@@ -30,17 +30,19 @@ type ApplicationUpdate struct {
 	Profile ApplicationUpdateProfile `json:"profile"`
 }
 
+type ApiError struct {
+	StatusCode int    `json:"statusCode"`
+	Error      string `json:"error"`
+	Message    string `json:"message"`
+}
+
 var verboseLog *log.Logger
 
 // TODO: for unit testing main(), you can use
 // os.Args = []string{"something", "something"}
 
 func main() {
-
-	api, apiSet := os.LookupEnv("TOUCHTUNES_FLEET_API")
-	if !apiSet {
-		api = "http://localhost:6565"
-	}
+	log.SetFlags(0) // disable timestamps ; XXX don't do this?
 
 	apps := make(map[string]string)
 	var input *os.File
@@ -75,8 +77,6 @@ func main() {
 
 		// Configure logging
 		{
-			log.SetFlags(0) // disable timestamps ; XXX don't do this?
-
 			var target io.Writer
 			if *verboseFlag {
 				target = os.Stderr
@@ -100,12 +100,28 @@ func main() {
 
 	verboseLog.Println("TouchTunes Fleet Updater Starting Up")
 
+	// Load environment parameters
+	api, apiSet := os.LookupEnv("TOUCHTUNES_FLEET_API")
+	if !apiSet {
+		api = "http://fleet.intra.touchtones.example.com:6565"
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	authToken, authTokenSet := os.LookupEnv("TOUCHTUNES_AUTH_TOKEN")
+	if !authTokenSet {
+		log.Println("Warning: TOUCHTUNES_AUTH_TOKEN should be defined.")
+		authToken = "<required>"
+	}
+
 	// Pre-compute the update-request JSON
 	var appSpec []ApplicationUpdateSpec
 	for app, version := range apps {
 		appSpec = append(appSpec, ApplicationUpdateSpec{app, version})
 	}
-	verboseLog.Println(appSpec)
 
 	update, err := json.MarshalIndent(
 		ApplicationUpdate{
@@ -160,23 +176,35 @@ func main() {
 
 		req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(update))
 		if err != nil {
-			log.Println("Couldn't make request:", err.Error())
+			log.Println(err.Error())
 			continue
 		}
-		// TODO: extra headers
+		req.Header.Add("Content-Type", "application/json")
+		req.Header.Add("X-Client-ID", hostname) // Assumption: this is meant to identify the *user*; if it was meant to identify the software it would be "User-Agent"
+		req.Header.Add("X-Authentication-Token", authToken)
+
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			log.Println("Couldn't send request:", err.Error())
+			log.Println(err.Error())
 			continue
 		}
-		if resp.StatusCode != http.StatusOK {
-			log.Println(resp.Status)
-			io.Copy(log.Writer(), resp.Body)
-			continue
+		if resp.StatusCode == http.StatusOK {
+			log.Printf("%s updated.\n", url)
+		} else {
+			if resp.Header.Get("Content-Type") == "application/json" {
+				var respDetails ApiError
+				err := json.NewDecoder(resp.Body).Decode(&respDetails)
+				if err != nil {
+					log.Printf("%s %s: %v\n", req.Method, url, err.Error())
+				} else {
+					log.Printf("%s %s: %v\n", req.Method, url, respDetails.Message)
+				}
+			} else {
+				// Nonsense result; maybe we're not talking to the right API?
+				log.Printf("%s %s: %v\n", req.Method, url, resp.Status)
+			}
 		}
 	}
-
-	api = api
 
 	verboseLog.Println("TouchTunes Fleet Updater Finished")
 }
