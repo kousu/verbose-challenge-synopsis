@@ -222,7 +222,6 @@ func parseCommand() (input *os.File, workers int, apps map[string]string, err er
 }
 
 func main() {
-	log.SetFlags(0) // disable timestamps ; XXX don't do this?
 
 	input, workers, apps, err := parseCommand()
 	if err != nil {
