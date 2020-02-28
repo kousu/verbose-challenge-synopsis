@@ -58,6 +58,7 @@ EOF
 Options:
 
 * `-h`: show short usage
+* `-n count`: set number of concurrent upload processes
 * `-v`: be more verbose about the operations in progress
 
 Environment variables:

@@ -266,7 +266,7 @@ func TestUpdateNoApps(t *testing.T) {
 
 	api = srv.URL
 
-	err := batchUpdate(bytes.NewBufferString("mac_addresses\naa:bb:cc:dd:ee:ff"), map[string]string{})
+	err := batchUpdate(bytes.NewBufferString("mac_addresses\naa:bb:cc:dd:ee:ff"), map[string]string{}, 1)
 	if err != nil {
 		t.Error(err)
 	}
@@ -293,7 +293,7 @@ func TestUpdateMultipleDevices(t *testing.T) {
 
 	api = srv.URL
 
-	err := batchUpdate(bytes.NewBufferString("mac_addresses\naa:bb:cc:dd:ee:ff\nee:ee:ee:ee:ee:ee\n12:34:56:78:9a:bc"), map[string]string{})
+	err := batchUpdate(bytes.NewBufferString("mac_addresses\naa:bb:cc:dd:ee:ff\nee:ee:ee:ee:ee:ee\n12:34:56:78:9a:bc"), map[string]string{}, 2)
 	if err != nil {
 		t.Error(err)
 	}
@@ -328,7 +328,7 @@ func TestUpdateMultipleDevicesMalformed1(t *testing.T) {
 aa:bb:cc:dd:ee:ff
 192.168.0.1
 12:34:56:78:9a:bc
-`), map[string]string{})
+`), map[string]string{}, 1)
 	if err != nil {
 		t.Error(err)
 	}
@@ -362,7 +362,7 @@ func TestUpdateMultipleDevicesMalformed2(t *testing.T) {
 9,10.0.0.1
 3,10.0.0.2
 9,10.0.0.3
-`), map[string]string{})
+`), map[string]string{}, 3)
 	if err == nil {
 		t.Errorf("Expected an error but got none")
 	} else if !strings.Contains(err.Error(), "Batch input missing 'mac_addresses' column") {
@@ -372,7 +372,7 @@ func TestUpdateMultipleDevicesMalformed2(t *testing.T) {
 
 func TestUpdateParseNoApps(t *testing.T) {
 	os.Args = append(os.Args[:1], "-")
-	csv, apps, err := parseCommand()
+	csv, _, apps, err := parseCommand()
 	if err != nil {
 		t.Fatalf("Error should not have happened: %v", err)
 	}
@@ -389,7 +389,7 @@ func TestUpdateParseNoApps(t *testing.T) {
 
 func TestUpdateAppParsing(t *testing.T) {
 	os.Args = append(os.Args[:1], "app1=v3.4.0", "app2=v5.4.3", "-")
-	csv, apps, err := parseCommand()
+	csv, _, apps, err := parseCommand()
 	if err != nil {
 		t.Fatalf("Error should not have happened: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestUpdateAppParsing(t *testing.T) {
 
 func TestUpdateAppParsingMalformed(t *testing.T) {
 	os.Args = append(os.Args[:1], "app1=v3.4.0", "-", "app2=v5.4.3")
-	_, _, err := parseCommand()
+	_, _, _, err := parseCommand()
 	if err == nil {
 		t.Fatalf("Error should have happened")
 	} else if !strings.Contains(err.Error(), "Invalid app version specification") {
@@ -419,7 +419,7 @@ func TestUpdateAppParsingMalformed(t *testing.T) {
 
 func TestUpdateMalformedArgs(t *testing.T) {
 	os.Args = append(os.Args[:1])
-	_, _, err := parseCommand()
+	_, _, _, err := parseCommand()
 	if err == nil {
 		t.Fatalf("Error should have happened")
 	} else if !strings.Contains(err.Error(), "Missing 'device_csv' argument.") {

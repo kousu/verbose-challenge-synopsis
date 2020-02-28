@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"sync"
 
 	"path/filepath"
 	"regexp"
@@ -36,15 +37,17 @@ type ApiError struct {
 	Message    string `json:"message"`
 }
 
-var verboseLog *log.Logger = log.New(ioutil.Discard, log.Prefix(), log.Flags())
 var api = "http://fleet.intra.touchtones.example.com:6565"
 var hostname = "<unknown>"
 var authToken = "<required>"
 
-// TODO: for unit testing main(), you can use
-// os.Args = []string{"something", "something"}
+var verboseLog *log.Logger = log.New(ioutil.Discard, log.Prefix(), log.Flags())
 
-// Update player clientId with new parameters updateJSON
+var macAddresses = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})$`)
+
+// Update player
+// clientId - the device to update (given as a MAC address)
+// updateJSON - the spec for the applications to update to, pre-marshalled to JSON
 func update(clientId string, updateJSON []byte) error {
 	url := api + "/profiles/clientId:" + clientId
 
@@ -78,7 +81,11 @@ func update(clientId string, updateJSON []byte) error {
 	}
 }
 
-func batchUpdate(deviceList io.Reader, apps map[string]string) error {
+func batchUpdate(deviceList io.Reader, apps map[string]string, workers int) error {
+	if workers < 1 {
+		return fmt.Errorf("Need positive number of worker threads.")
+	}
+
 	// Pre-compute the update-request JSON
 	var appSpec []ApplicationUpdateSpec
 	for app, version := range apps {
@@ -98,8 +105,6 @@ func batchUpdate(deviceList io.Reader, apps map[string]string) error {
 	}
 	verboseLog.Printf("Updating players with:\n%s\n", string(updateJSON))
 
-	// TODO: add a worker pool here so that updates can happen in parallel.
-
 	devices := csv.NewReader(deviceList)
 
 	header, err := devices.Read()
@@ -114,6 +119,30 @@ func batchUpdate(deviceList io.Reader, apps map[string]string) error {
 	if !exists {
 		return fmt.Errorf("Batch input missing 'mac_addresses' column")
 	}
+
+	// worker pool
+	jobs := make(chan string)
+	wg := sync.WaitGroup{}
+
+	worker := func(i int) {
+		for clientId := range jobs {
+			verboseLog.Printf("Updating '%s' in worker %d\n", clientId, i)
+			err = update(clientId, updateJSON)
+			if err != nil {
+				log.Println(err.Error())
+				continue
+			}
+			log.Printf("%s updated.\n", clientId)
+		}
+		wg.Done()
+	}
+
+	for i := 0; i < workers; i++ {
+		go worker(i)
+		wg.Add(1)
+	}
+
+	// read CSV, feeding the worker pool
 	r := 0
 	for {
 		r += 1
@@ -126,26 +155,20 @@ func batchUpdate(deviceList io.Reader, apps map[string]string) error {
 		}
 
 		clientId := record[macAddresses_i]
-
-		macAddresses := regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})$`)
 		if !macAddresses.MatchString(clientId) {
 			log.Printf("Warning: invalid MAC address '%s' on line %d.\n", clientId, r)
 			continue // ignore, don't break, the batch job on invalid lines
 		}
 
-		verboseLog.Printf("Updating '%s'\n", clientId)
-		err = update(clientId, updateJSON)
-		if err != nil {
-			log.Println(err.Error())
-			continue
-		}
-		log.Printf("%s updated.\n", clientId)
+		jobs <- clientId
 	}
+	close(jobs)
+	wg.Wait()
 
 	return nil
 }
 
-func parseCommand() (input *os.File, apps map[string]string, err error) {
+func parseCommand() (input *os.File, workers int, apps map[string]string, err error) {
 	apps = make(map[string]string)
 
 	flags := flag.NewFlagSet("", flag.ContinueOnError)
@@ -157,10 +180,12 @@ func parseCommand() (input *os.File, apps map[string]string, err error) {
 		flag.PrintDefaults()
 	}
 	verboseFlag := flags.Bool("v", false, "verbose mode")
+	workersFlag := flags.Int("n", 4, "number of parallel updates")
 	flags.Parse(os.Args[1:])
 	rest := flags.Args()
 	if len(rest) < 1 {
-		return nil, nil, fmt.Errorf("Missing 'device_csv' argument.")
+		err = fmt.Errorf("Missing 'device_csv' argument.")
+		return
 	}
 	inputFname := rest[len(rest)-1]
 	rest = rest[:len(rest)-1]
@@ -170,7 +195,8 @@ func parseCommand() (input *os.File, apps map[string]string, err error) {
 	for _, app := range rest {
 		pieces := re.FindStringSubmatch(app)
 		if pieces == nil {
-			return nil, nil, fmt.Errorf("Invalid app version specification '%v'", app)
+			err = fmt.Errorf("Invalid app version specification '%v'", app)
+			return
 		}
 		apps[pieces[1]] = pieces[2]
 	}
@@ -180,14 +206,15 @@ func parseCommand() (input *os.File, apps map[string]string, err error) {
 		verboseLog.SetOutput(os.Stderr)
 	}
 
+	workers = *workersFlag
+
 	// Prepare batch input file
 	if inputFname == "-" {
 		input = os.Stdin
 	} else {
-		var err error
 		input, err = os.Open(inputFname)
 		if err != nil {
-			return nil, nil, err
+			return
 		}
 	}
 
@@ -197,7 +224,7 @@ func parseCommand() (input *os.File, apps map[string]string, err error) {
 func main() {
 	log.SetFlags(0) // disable timestamps ; XXX don't do this?
 
-	input, apps, err := parseCommand()
+	input, workers, apps, err := parseCommand()
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -224,7 +251,7 @@ func main() {
 		log.Println("Warning: TOUCHTUNES_AUTH_TOKEN should be defined.")
 	}
 
-	err = batchUpdate(input, apps)
+	err = batchUpdate(input, apps, workers)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
