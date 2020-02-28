@@ -32,6 +32,12 @@ Provide it via an environment variable:
 export TOUCHTUNES_AUTH_TOKEN="<your-token>"
 ```
 
+or on Windows:
+
+```{cmd}
+set TOUCHTUNES_AUTH_TOKEN="<your-token>"
+```
+
 Run the batch job like this
 
 ```{sh}
@@ -77,7 +83,7 @@ will produce `update-player-firmwares`.
 To run and test the app without installation, use `go run`. It is also wise to point the app at a staging API during development. Hence,
 
 ```
-export TOUCHTUNES_FLEET_API=http://localhost:6565
+export TOUCHTUNES_FLEET_API=http://localhost:6565  # or "set" if on Windows
 go run update-player-firmwares.go [options] [apps ...] device_csv
 ```
 
@@ -91,4 +97,4 @@ To run unit tests, just
 go test -v
 ```
 
-The tests are in ...
+The tests are in `update-player-firmwares_test.go`
